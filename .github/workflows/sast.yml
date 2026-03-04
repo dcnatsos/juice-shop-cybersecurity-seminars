@@ -1,0 +1,164 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# SAST Demo Workflow
+#
+# Runs three complementary security checks on every push and on manual trigger:
+#
+#   1. CodeQL      – semantic / dataflow analysis (deep, finds real vuln paths)
+#   2. Semgrep     – pattern-based analysis       (fast, readable, OWASP rules)
+#   3. npm audit   – dependency vulnerability scan (informational, never fails)
+#
+# CodeQL and Semgrep results are uploaded as SARIF and appear in:
+#   GitHub → Security → Code scanning alerts
+#
+# npm audit results are printed to the job log and saved as a downloadable
+# workflow artifact (npm-audit-results.json).
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: SAST Analysis
+
+on:
+  push:
+    branches: ["**"]
+  workflow_dispatch:
+
+jobs:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 1: CodeQL – semantic analysis
+  # Performs dataflow / taint tracking across the entire codebase.
+  # Slower than Semgrep but catches multi-step vulnerability paths that
+  # simple pattern matching cannot. Results → Security tab (SARIF).
+  # ─────────────────────────────────────────────────────────────────────────
+  codeql:
+    name: "CodeQL (semantic SAST)"
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write   # required to upload SARIF to the Security tab
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ["javascript-typescript"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          # security-extended includes extra queries beyond the default suite
+          queries: security-extended
+          config: |
+            paths-ignore:
+              - "data/static/codefixes"   # exclude intentional bad-code examples
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+        # Results are automatically uploaded to GitHub Security → Code scanning
+
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 2: Semgrep – pattern-based analysis
+  # Uses community rule packs to flag well-known vulnerability patterns.
+  # Runs in seconds, output is immediately readable in the Actions log.
+  # Results → Security tab (SARIF) via the upload step below.
+  # ─────────────────────────────────────────────────────────────────────────
+  semgrep:
+    name: "Semgrep (pattern-based SAST)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write   # required to upload SARIF to the Security tab
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Run Semgrep
+        # returntocorp/semgrep-action installs Semgrep, runs the chosen rules,
+        # prints findings to the log, and writes a SARIF report file.
+        uses: returntocorp/semgrep-action@v1
+        with:
+          # Rule packs used:
+          #   p/nodejs        – Node.js-specific security patterns
+          #   p/owasp-top-ten – mappings to the OWASP Top 10
+          #   p/javascript    – general JS/TS security rules
+          config: >-
+            p/nodejs
+            p/owasp-top-ten
+            p/javascript
+          # Write SARIF output so we can upload to the Security tab
+          generateSarif: "1"
+        env:
+          # No SEMGREP_APP_TOKEN needed for public rule packs
+          SEMGREP_TIMEOUT: "300"
+
+      - name: Upload Semgrep SARIF to GitHub Security tab
+        # Run even when Semgrep exits non-zero (i.e. findings were detected)
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Job 3: npm audit – dependency vulnerability scan
+  # Checks every package in node_modules against the npm advisory database.
+  # This is NOT a SAST tool – it checks third-party components (SCA).
+  # Set to continue-on-error: true so it never blocks a push; it is purely
+  # informational. To make it a blocking gate in CI, remove continue-on-error
+  # and change the audit command to: npm audit --audit-level=high
+  # ─────────────────────────────────────────────────────────────────────────
+  npm-audit:
+    name: "npm audit (dependency SCA)"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm install
+        # We need node_modules populated so npm audit can resolve the tree
+
+      - name: Run npm audit (human-readable table in log)
+        # continue-on-error keeps the job green even when vulns are found
+        continue-on-error: true
+        run: |
+          echo "──────────────────────────────────────────────"
+          echo "npm audit – dependency vulnerability report"
+          echo "──────────────────────────────────────────────"
+          npm audit || true
+          echo ""
+          echo "To make this a blocking check, remove continue-on-error"
+          echo "and change the command to: npm audit --audit-level=high"
+
+      - name: Save npm audit JSON report as artifact
+        continue-on-error: true
+        run: npm audit --json > npm-audit-results.json || true
+
+      - name: Upload audit JSON artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: npm-audit-results.json
+          retention-days: 14
