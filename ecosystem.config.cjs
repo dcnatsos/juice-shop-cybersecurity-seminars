@@ -2,9 +2,9 @@ module.exports = {
   apps: [
     {
       name: 'juice-shop',
-      script: 'build/app.js',
+      script: 'npm',
+      args: 'run dev',
       cwd: __dirname,
-      interpreter: 'node',
       env: {
         NODE_ENV: 'development',
         PORT: 3000

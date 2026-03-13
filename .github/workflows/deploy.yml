@@ -19,16 +19,7 @@ jobs:
       - name: Checkout Code on Runner
         uses: actions/checkout@v4
 
-      # 2. Build frontend on the runner (avoids slow/timeout build on server)
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Build Frontend
-        run: cd frontend && npm install && npm run build
-
-      # 3. Setup rsync over SSH (Transfer)
+      # 2. Setup rsync over SSH (Transfer)
       - name: Deploy Code via rsync over SSH (Safe Update)
         uses: burnett01/rsync-deployments@7.1.0
         with:
@@ -43,7 +34,7 @@ jobs:
           # --no-o --no-g attempts to maintain the ownership of the files on the server
           # One can remove the --exclude .git if tracking of changes on the server is desired.
 
-      # 3. Restart the service on the remote server
+      # 3. Install dependencies and restart service on the remote server
       - name: Remote Setup and Restart Service
         uses: appleboy/ssh-action@master
         with:
@@ -54,7 +45,8 @@ jobs:
           script: |
             cd ~/Workspace/juice-shop
             bash -ci 'npm i --ignore-scripts'
-            bash -ci 'pm2 restart ecosystem.config.cjs'
+            bash -ci 'cd frontend && npm i'
+            bash -ci 'pm2 start ecosystem.config.cjs --update-env'
 
   zap:
     needs: deploy-staging
