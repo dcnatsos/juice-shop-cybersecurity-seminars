@@ -18,8 +18,17 @@ jobs:
       # 1. Checkout (Clone) on the GitHub Actions runner
       - name: Checkout Code on Runner
         uses: actions/checkout@v4
-        
-      # 2. Setup rsync over SSH (Transfer)
+
+      # 2. Build frontend on the runner (avoids slow/timeout build on server)
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Build Frontend
+        run: cd frontend && npm install && npm run build
+
+      # 3. Setup rsync over SSH (Transfer)
       - name: Deploy Code via rsync over SSH (Safe Update)
         uses: burnett01/rsync-deployments@7.1.0
         with:
@@ -44,7 +53,7 @@ jobs:
           port: ${{ secrets.SSH_PORT }}
           script: |
             cd ~/Workspace/juice-shop
-            bash -ci 'npm i'
+            bash -ci 'npm i --ignore-scripts'
             bash -ci 'pm2 restart ecosystem.config.cjs'
 
   zap:
