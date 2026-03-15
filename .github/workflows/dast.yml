@@ -1,0 +1,21 @@
+name: deploy
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zap:
+    runs-on: ubuntu-latest
+    steps:
+      - name: ZAP Full Scan
+        uses: zaproxy/action-full-scan@v0.13.0
+        with:
+          target: ${{ secrets.APP_DOMAIN }}
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zapscan
