@@ -7,7 +7,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 jobs:     
 #   deploy-staging:
@@ -56,7 +55,6 @@ jobs:
         uses: zaproxy/action-full-scan@v0.11.0
         with:
           target: ${{ secrets.APP_DOMAIN }}
-      - name: Download Report Artifact
-        uses: actions/download-artifact@v4
-      - name: Display structure of downloaded files
-        run: ls -R
+          allow_issue_writing: false
+          fail_action: false
+          artifact_name: zap_scan
