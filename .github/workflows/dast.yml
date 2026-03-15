@@ -1,4 +1,4 @@
-name: deploy
+name: zap
 on:
   push:
     branches:
