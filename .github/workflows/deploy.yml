@@ -57,4 +57,4 @@ jobs:
           target: ${{ secrets.APP_DOMAIN }}
           allow_issue_writing: false
           fail_action: false
-          artifact_name: zap_scan
+          artifact_name: zapscan
